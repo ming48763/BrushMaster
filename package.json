@@ -1,0 +1,17 @@
+{
+  "name": "brush",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "pdf-to-json.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "pdf-parse": "^2.4.5",
+    "pdf.js-extract": "^1.0.1",
+    "pdfreader": "^3.0.8"
+  }
+}

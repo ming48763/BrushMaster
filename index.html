@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>互動式題庫測驗系統</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; }
+        .quiz-container { max-width: 800px; margin: 50px auto; background: white; padding: 30px; border-radius: 10px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        .question-block { margin-bottom: 25px; padding-bottom: 20px; border-bottom: 1px solid #eee; }
+        .correct-ans { color: green; font-weight: bold; }
+        .wrong-ans { color: red; font-weight: bold; }
+        .topic-row { background-color: #f1f3f5; padding: 15px; border-radius: 8px; margin-bottom: 12px; }
+        
+        /* 隱藏數字輸入框的上下箭頭，修正了引號 typo */
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+            margin: 0;
+        }
+        input[type="number"] {
+            -moz-appearance: textfield;
+        }
+    </style>
+</head>
+<body>
+
+<div class="quiz-container">
+    <h2 class="text-center mb-4">📝 自訂範圍題庫測驗</h2>
+
+    <div id="setup-section">
+        <div class="mb-4">
+            <label class="form-label fw-bold fs-5">1. 選擇測驗主題與範圍：</label>
+            <div id="topic-checkboxes">
+                </div>
+        </div>
+
+        <div class="mb-4">
+            <label for="limit-input" class="form-label fw-bold fs-5">2. 指定測驗題數：</label>
+            <input type="number" id="limit-input" class="form-control form-control-lg fw-bold text-primary" style="max-width: 200px;" value="20" min="1">
+            <div class="form-text">預設為 20 題，可自行修改。</div>
+        </div>
+
+        <button class="btn btn-primary btn-lg w-100 shadow-sm" onclick="startQuiz()">🚀 開始測驗</button>
+    </div>
+
+    <div id="quiz-section" class="d-none">
+        <div id="questions-container"></div>
+        <button class="btn btn-success btn-lg w-100 mt-3 shadow-sm" onclick="submitQuiz()">💯 交卷算分</button>
+    </div>
+
+    <div id="result-section" class="d-none text-center">
+        <h3 id="score-display" class="mb-4"></h3>
+        <div id="review-container" class="text-start"></div>
+        <button class="btn btn-outline-primary mt-4" onclick="location.reload()">🔄 重新設定測驗</button>
+    </div>
+</div>
+
+<script>
+    let questionDB = [];
+    let currentQuiz = [];
+    
+    fetch('questions_db.json')
+        .then(response => response.json())
+        .then(data => {
+            questionDB = data;
+            const container = document.getElementById('topic-checkboxes');
+            const topics = [...new Set(data.map(q => q.topic))];
+            
+            topics.forEach((topic, index) => {
+                const topicQuestions = data.filter(q => q.topic === topic);
+                const maxId = Math.max(...topicQuestions.map(q => q.id));
+
+                // 升級版排版：加入 flex-sm-row 讓它窄螢幕時自動疊放，加上 min-width 防止輸入框被壓扁
+                container.innerHTML += `
+                    <div class="topic-row d-flex flex-column flex-md-row align-items-start align-items-md-center justify-content-between gap-3 shadow-sm">
+                        <div class="form-check fs-5 mb-2 mb-md-0">
+                            <input class="form-check-input topic-cb border-secondary shadow-sm" type="checkbox" value="${topic}" id="cb-${index}">
+                            <label class="form-check-label fw-bold" style="cursor: pointer;" for="cb-${index}">
+                                ${topic} <span class="text-muted fs-6">(共 ${topicQuestions.length} 題)</span>
+                            </label>
+                        </div>
+                        <div class="input-group flex-nowrap shadow-sm" style="width: auto;">
+                            <span class="input-group-text bg-white text-muted">第</span>
+                            <input type="number" class="form-control text-center fw-bold text-primary fs-5 px-1" style="min-width: 60px; max-width: 80px;" id="min-${index}" value="1" min="1">
+                            <span class="input-group-text bg-white border-start-0 border-end-0 text-muted px-2">至</span>
+                            <input type="number" class="form-control text-center fw-bold text-primary fs-5 px-1" style="min-width: 60px; max-width: 80px;" id="max-${index}" value="${maxId}" min="1">
+                            <span class="input-group-text bg-white text-muted">題</span>
+                        </div>
+                    </div>
+                `;
+            });
+        });
+
+    function startQuiz() {
+        const checkboxes = document.querySelectorAll('.topic-cb');
+        let questionPool = []; 
+
+        checkboxes.forEach((cb, index) => {
+            if (cb.checked) {
+                const topic = cb.value;
+                let minVal = parseInt(document.getElementById(`min-${index}`).value) || 1;
+                let maxVal = parseInt(document.getElementById(`max-${index}`).value) || 9999;
+
+                if (minVal > maxVal) {
+                    [minVal, maxVal] = [maxVal, minVal]; 
+                }
+
+                const filtered = questionDB.filter(q => 
+                    q.topic === topic && q.id >= minVal && q.id <= maxVal
+                );
+                
+                questionPool = questionPool.concat(filtered);
+            }
+        });
+
+        if (questionPool.length === 0) {
+            alert("⚠️ 錯誤：請至少勾選一個測驗範圍！\n或確認您輸入的題號範圍內有題目。");
+            return;
+        }
+
+        const limitInput = document.getElementById('limit-input').value;
+        const limit = parseInt(limitInput);
+
+        if (isNaN(limit) || limit <= 0) {
+            alert("⚠️ 錯誤：請輸入大於 0 的合理測驗題數！");
+            return;
+        }
+
+        if (limit > questionPool.length) {
+            alert(`⚠️ 錯誤：題數不足！\n您勾選的範圍內只有 ${questionPool.length} 題，但您要求測驗 ${limit} 題。\n請減少測驗題數，或勾選更多範圍。`);
+            return;
+        }
+
+        questionPool.sort(() => Math.random() - 0.5);
+        currentQuiz = questionPool.slice(0, limit);
+
+        document.getElementById('setup-section').classList.add('d-none');
+        document.getElementById('quiz-section').classList.remove('d-none');
+
+        renderQuestions();
+    }
+
+    function renderQuestions() {
+        const container = document.getElementById('questions-container');
+        container.innerHTML = '';
+
+        currentQuiz.forEach((q, index) => {
+            let optionsHtml = '';
+            q.options.forEach((opt, optIndex) => {
+                optionsHtml += `
+                    <div class="form-check fs-5 mb-2">
+                        <input class="form-check-input border-secondary" type="radio" name="q-${index}" value="${opt}" id="q${index}-opt${optIndex}">
+                        <label class="form-check-label" style="cursor: pointer;" for="q${index}-opt${optIndex}">
+                            ${opt}
+                        </label>
+                    </div>
+                `;
+            });
+
+            container.innerHTML += `
+                <div class="question-block">
+                    <h5 class="fw-bold mb-3 lh-base"><span class="badge bg-primary me-2">第 ${index + 1} 題</span>${q.question}</h5>
+                    <div class="ps-2">
+                        ${optionsHtml}
+                    </div>
+                    <p class="text-muted small mt-3 text-end">來源：${q.topic} (原題號：${q.id})</p>
+                </div>
+            `;
+        });
+    }
+
+    function submitQuiz() {
+        let score = 0;
+        let reviewHtml = '<h4 class="mb-4 text-danger fw-bold">📝 錯題分析與檢討：</h4>';
+        let wrongCount = 0;
+
+        const pointPerQuestion = 100 / currentQuiz.length;
+
+        currentQuiz.forEach((q, index) => {
+            const selectedOption = document.querySelector(`input[name="q-${index}"]:checked`);
+            const userAnswer = selectedOption ? selectedOption.value : "未作答";
+
+            if (userAnswer === q.answer) {
+                score += pointPerQuestion;
+            } else {
+                wrongCount++;
+                reviewHtml += `
+                    <div class="alert alert-danger shadow-sm mb-4 border-0 border-start border-danger border-5">
+                        <div class="text-muted small mb-2">來源：${q.topic} (原題號：${q.id})</div>
+                        <h5 class="fw-bold text-dark mb-3 lh-base">${q.question}</h5>
+                        <div class="mb-2"><span class="wrong-ans">❌ 你的答案：${userAnswer}</span></div>
+                        <div><span class="correct-ans">✅ 正確答案：${q.answer}</span></div>
+                    </div>
+                `;
+            }
+        });
+
+        document.getElementById('quiz-section').classList.add('d-none');
+        document.getElementById('result-section').classList.remove('d-none');
+
+        document.getElementById('score-display').innerHTML = `您的總分是：<span class="${score >= 60 ? 'text-success' : 'text-danger'} fs-1 fw-bold">${Math.round(score)} 分</span>`;
+        
+        if (wrongCount === 0) {
+            document.getElementById('review-container').innerHTML = '<div class="alert alert-success fs-4 shadow-sm text-center">🎉 太棒了！全對！無錯題需要檢討。</div>';
+        } else {
+            document.getElementById('review-container').innerHTML = reviewHtml;
+        }
+    }
+</script>
+</body>
+</html>
