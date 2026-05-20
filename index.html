@@ -299,21 +299,27 @@
         });
     }
 
-    // ⭐ 新增功能：點擊選項後「自動捲動」到下一題
+    // ⭐ 新增功能：點擊選項後「精準捲動」到下一題
     document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('questions-container').addEventListener('change', function(e) {
-            // 如果點擊的目標是 radio button (選項)
             if (e.target && e.target.matches('input[type="radio"]')) {
                 const currentBlock = e.target.closest('.question-block');
                 const nextBlock = currentBlock.nextElementSibling;
                 
                 if (nextBlock && nextBlock.classList.contains('question-block')) {
-                    // 稍微延遲 400 毫秒 (讓使用者看清楚自己點中的選項變色) 再滑動
                     setTimeout(() => {
-                        nextBlock.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                        // 【關鍵優化】：計算下一題的位置並減去標題高度
+                        const headerOffset = 80; // 留給頂部標題的空間
+                        const elementPosition = nextBlock.getBoundingClientRect().top;
+                        const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+
+                        window.scrollTo({
+                            top: offsetPosition,
+                            behavior: "smooth"
+                        });
                     }, 400);
                 } else {
-                    // 如果沒有下一題了，自動捲動到最底下的「交卷」按鈕
+                    // 如果沒有下一題，滑到頁面底部
                     setTimeout(() => {
                         window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
                     }, 400);
